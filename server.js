@@ -53,7 +53,8 @@ app.get('/', requireLogin, (req, res) => {
   res.render('form', {
     message: null,
     count: 0,
-    formData: {}
+    formData: {},
+    success: false
   });
 });
 
@@ -67,7 +68,8 @@ app.post('/send', requireLogin, async (req, res) => {
     return res.render('form', {
       message: 'Sender email and app password required.',
       count: 0,
-      formData: req.body
+      formData: req.body,
+      success: false
     });
   }
 
@@ -119,7 +121,8 @@ app.post('/send', requireLogin, async (req, res) => {
     return res.render('form', {
       message: msg,
       count: recipients.length,
-      formData: req.body
+      formData: req.body,
+      success: true
     });
 
   } catch (err) {
@@ -127,7 +130,8 @@ app.post('/send', requireLogin, async (req, res) => {
     return res.render('form', {
       message: `Error sending: ${err.message}`,
       count: recipients.length,
-      formData: req.body
+      formData: req.body,
+      success: false
     });
   }
 });
