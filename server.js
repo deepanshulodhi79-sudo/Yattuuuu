@@ -9,10 +9,8 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// ---------- HARD-CODED LOGIN ----------
 const HARD_USERNAME = 'Yatendra Rajput';
 const HARD_PASSWORD = 'Yattu@882';
-// --------------------------------------
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -55,39 +53,38 @@ app.get('/', requireLogin, (req, res) => {
   res.render('form', {
     message: null,
     count: 0,
-    formData: {} // empty by default
+    formData: {}
   });
 });
 
 app.post('/send', requireLogin, async (req, res) => {
+  const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
+
+  const senderEmail = sentFrom && sentFrom.trim() !== '' ? sentFrom.trim() : (process.env.SENDER_EMAIL || '');
+  const senderAppPassword = appPassword && appPassword.trim() !== '' ? appPassword.trim() : (process.env.SENDER_APP_PASSWORD || '');
+
+  if (!senderEmail || !senderAppPassword) {
+    return res.render('form', {
+      message: 'Sender email and app password required.',
+      count: 0,
+      formData: req.body
+    });
+  }
+
+  // Parse recipients
+  let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+  recipients = [...new Set(recipients)];
+  const MAX_PER_BATCH = 30;
+
+  // Email validation
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validRecipients = recipients.filter(r => emailRe.test(r));
+  const invalidRecipients = recipients.filter(r => !emailRe.test(r));
+
+  // Limit
+  const limitedValidRecipients = validRecipients.slice(0, MAX_PER_BATCH);
+
   try {
-    const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
-
-    // Sender email + app password
-    const senderEmail = sentFrom && sentFrom.trim() !== '' ? sentFrom.trim() : (process.env.SENDER_EMAIL || '');
-    const senderAppPassword = appPassword && appPassword.trim() !== '' ? appPassword.trim() : (process.env.SENDER_APP_PASSWORD || '');
-
-    if (!senderEmail || !senderAppPassword) {
-      return res.render('form', { message: 'Sender email and app password required.', count: 0, formData: req.body });
-    }
-
-    // Parse recipients
-    let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
-    recipients = [...new Set(recipients)];
-    const MAX_PER_BATCH = 30;
-
-    if (recipients.length > MAX_PER_BATCH) {
-      return res.render('form', { message: `You provided ${recipients.length} addresses. Max ${MAX_PER_BATCH} allowed per send.`, count: recipients.length, formData: req.body });
-    }
-
-    // Email validation
-    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalid = recipients.filter(r => !emailRe.test(r));
-    if (invalid.length) {
-      return res.render('form', { message: `Invalid emails: ${invalid.join(', ')}`, count: recipients.length, formData: req.body });
-    }
-
-    // transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -96,13 +93,13 @@ app.post('/send', requireLogin, async (req, res) => {
       },
       pool: true,
       maxConnections: 1,
-      maxMessages: recipients.length
+      maxMessages: limitedValidRecipients.length
     });
 
     let sentCount = 0;
-    for (const to of recipients) {
+    for (const to of limitedValidRecipients) {
       await transporter.sendMail({
-        from: senderEmail,
+        from: `"${firstName || senderEmail}" <${senderEmail}>`,
         to,
         subject: subject || '(No subject)',
         text: body || ''
@@ -110,15 +107,24 @@ app.post('/send', requireLogin, async (req, res) => {
       sentCount++;
     }
 
+    let msg = `Successfully sent ${sentCount} emails.`;
+    if (invalidRecipients.length > 0) {
+      msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
+    }
+
     return res.render('form', {
-      message: `Successfully sent ${sentCount} emails.`,
+      message: msg,
       count: recipients.length,
-      formData: req.body // keep form values
+      formData: req.body
     });
 
   } catch (err) {
     console.error('Send error', err);
-    return res.render('form', { message: `Error sending: ${err.message}`, count: 0, formData: req.body });
+    return res.render('form', {
+      message: `Error sending: ${err.message}`,
+      count: recipients.length,
+      formData: req.body
+    });
   }
 });
 
