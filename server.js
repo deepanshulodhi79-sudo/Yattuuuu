@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
@@ -85,32 +84,29 @@ app.post('/send', requireLogin, async (req, res) => {
   const limitedValidRecipients = validRecipients.slice(0, MAX_PER_BATCH);
 
   try {
+    // ✅ Create a new transporter each time to ensure latest details are used
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: senderEmail,
         pass: senderAppPassword
-      },
-      pool: true,
-      maxConnections: 1,
-      maxMessages: limitedValidRecipients.length
+      }
     });
 
-    const sendPromises = limitedValidRecipients.map(to => 
-  transporter.sendMail({
-    from: `"${firstName || senderEmail}" <${senderEmail}>`,
-    to,
-    subject: subject || '(No subject)',
-    text: body || ''
-  }).then(()=>to).catch(err=>{
-    console.error('Send failed for',to,err.message);
-    return null;
-  })
-);
+    const sendPromises = limitedValidRecipients.map(to =>
+      transporter.sendMail({
+        from: `"${firstName || senderEmail}" <${senderEmail}>`,
+        to,
+        subject: subject || '(No subject)',
+        text: body || ''
+      }).then(() => to).catch(err => {
+        console.error('Send failed for', to, err.message);
+        return null;
+      })
+    );
 
-const results = await Promise.all(sendPromises);
-const sentCount = results.filter(r=>r!==null).length;
-
+    const results = await Promise.all(sendPromises);
+    const sentCount = results.filter(r => r !== null).length;
 
     let msg = `Successfully sent ${sentCount} emails.`;
     if (invalidRecipients.length > 0) {
