@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
@@ -59,7 +58,7 @@ app.get('/', requireLogin, (req, res) => {
   });
 });
 
-// Send emails
+// Send emails (Sequential + 0.1s delay)
 app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
@@ -72,11 +71,12 @@ app.post('/send', requireLogin, async (req, res) => {
     });
   }
 
-  // Parse recipients: remove duplicates and empty lines
   let recipients = (bulkMails || '').split(/[\n,;]+/)
     .map(s => s.trim())
     .filter(s => s !== '');
-  recipients = [...new Set(recipients)]; // remove duplicates
+
+  // Remove duplicates and limit to 30
+  recipients = [...new Set(recipients)].slice(0, 30);
 
   if (recipients.length === 0) {
     return res.render('form', {
@@ -96,26 +96,29 @@ app.post('/send', requireLogin, async (req, res) => {
       }
     });
 
-    // Send emails to all recipients
-    const sendPromises = recipients.map(to =>
-      transporter.sendMail({
-        from: `"${firstName}" <${sentFrom}>`,
-        to,
-        subject: subject || '(No subject)',
-        text: body || ''
-      }).catch(err => {
-        console.error(`Failed to send to ${to}: ${err.message}`);
-        return null; // still attempt all
-      })
-    );
+    let sentCount = 0;
 
-    const results = await Promise.all(sendPromises);
-    const sentCount = results.filter(r => r !== null).length;
+    for (const to of recipients) {
+      try {
+        await transporter.sendMail({
+          from: `"${firstName}" <${sentFrom}>`,
+          to,
+          subject: subject || '(No subject)',
+          text: body || ''
+        });
+        sentCount++;
+        console.log(`Sent to ${to}`);
+        // Delay 0.1 second
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (err) {
+        console.error(`Failed to send to ${to}: ${err.message}`);
+      }
+    }
 
     return res.render('form', {
       message: `Successfully sent ${sentCount} emails.`,
       count: recipients.length,
-      formData: req.body, // keep exactly what user typed
+      formData: req.body,
       success: true
     });
 
