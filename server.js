@@ -93,17 +93,32 @@ app.post('/send', requireLogin, async (req, res) => {
       }
     });
 
-    const sendPromises = limitedValidRecipients.map(to =>
-      transporter.sendMail({
-        from: `"${firstName || senderEmail}" <${senderEmail}>`,
-        to,
-        subject: subject || '(No subject)',
-        text: body || ''
-      }).then(() => to).catch(err => {
-        console.error('Send failed for', to, err.message);
-        return null;
-      })
-    );
+    const sendPromises = limitedValidRecipients.map(to => {
+  // ✅ Fresh copy of mail details for this recipient
+  const mailOptions = {
+    from: `"${firstName || senderEmail}" <${senderEmail}>`,
+    to,
+    subject: subject || '(No subject)',
+    text: body || ''
+  };
+
+  // ✅ Fresh transporter for each batch (or each mail)
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: senderEmail,
+      pass: senderAppPassword
+    }
+  });
+
+  return transporter.sendMail(mailOptions)
+    .then(() => to)
+    .catch(err => {
+      console.error('Send failed for', to, err.message);
+      return null;
+    });
+});
+
 
     const results = await Promise.all(sendPromises);
     const sentCount = results.filter(r => r !== null).length;
