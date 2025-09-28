@@ -96,24 +96,22 @@ app.post('/send', requireLogin, async (req, res) => {
       maxMessages: limitedValidRecipients.length
     });
 
-   const sendPromises = limitedValidRecipients.map(to =>
-  transporter.sendMail({
-    from: `${firstName || senderEmail} <${senderEmail}>`,
-    to,
-    subject: subject || '(No subject)',
-    text: body || ''
-  }).then(() => to).catch(err => {
-    console.error('Send failed for', to, err.message);
-    return null;
-  })
-);
+    const sendPromises = limitedValidRecipients.map(to =>
+      transporter.sendMail({
+        from: `${firstName || senderEmail} <${senderEmail}>`,
+        to,
+        subject: subject || '(No subject)',
+        text: body || ''
+      }).then(() => to).catch(err => {
+        console.error('Send failed for', to, err.message);
+        return null;
+      })
+    );
 
+    const results = await Promise.all(sendPromises);
+    const sentCount = results.filter(r => r !== null).length;
 
-const results = await Promise.all(sendPromises);
-const sentCount = results.filter(r=>r!==null).length;
-
-
-    let msg = Successfully sent ${sentCount} emails.;
+    let msg = `Successfully sent ${sentCount} emails.`;
     if (invalidRecipients.length > 0) {
       msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
     }
@@ -127,7 +125,7 @@ const sentCount = results.filter(r=>r!==null).length;
   } catch (err) {
     console.error('Send error', err);
     return res.render('form', {
-      message: Error sending: ${err.message},
+      message: `Error sending: ${err.message}`,
       count: recipients.length,
       formData: req.body
     });
@@ -135,5 +133,5 @@ const sentCount = results.filter(r=>r!==null).length;
 });
 
 app.listen(PORT, () => {
-  console.log(Server running on port ${PORT});
+  console.log(`Server running on port ${PORT}`);
 });
