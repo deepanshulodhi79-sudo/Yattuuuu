@@ -1,60 +1,138 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Bulk Mail Sender</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-</head>
-<body class="p-3">
-<div class="container">
-  <h2 class="mb-3">Bulk Mail Sender</h2>
+// server.js
+require('dotenv').config();
+const express = require('express');
+const session = require('express-session');
+const bodyParser = require('body-parser');
+const nodemailer = require('nodemailer');
+const path = require('path');
 
-  <% if (message) { %>
-    <div class="alert alert-info"><%= message %></div>
-  <% } %>
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-  <form action="/send" method="POST">
-    <div class="row">
-      <div class="col-md-4">
-        <div class="mb-3">
-          <label class="form-label">Name</label>
-          <input type="text" class="form-control" name="firstName" value="<%= formData.firstName || '' %>" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Sender Email</label>
-          <input type="email" class="form-control" name="sentFrom" value="<%= formData.sentFrom || '' %>" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">App Password</label>
-          <input type="password" class="form-control" name="appPassword" value="<%= formData.appPassword || '' %>" required>
-        </div>
-      </div>
+const HARD_USERNAME = 'Yatendra Rajput';
+const HARD_PASSWORD = 'Yattu@882';
 
-      <div class="col-md-8">
-        <div class="mb-3">
-          <label class="form-label">Subject</label>
-          <input type="text" class="form-control" name="subject" value="<%= formData.subject || '' %>">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Message Body</label>
-          <textarea class="form-control" name="body" rows="5"><%= formData.body || '' %></textarea>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Bulk Email IDs (one per line)</label>
-          <textarea class="form-control" name="bulkMails" rows="5"><%= formData.bulkMails || '' %></textarea>
-          <small class="text-muted">You entered <%= count || 0 %> addresses</small>
-        </div>
-        <button type="submit" class="btn btn-primary">Send Emails</button>
-        <a href="/logout" class="btn btn-secondary">Logout</a>
-      </div>
-    </div>
-  </form>
-</div>
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.urlencoded({ extended: true }));
 
-<script>
-  <% if (typeof success !== 'undefined' && success) { %>
-    alert("<%= message %>");
-  <% } %>
-</script>
-</body>
-</html>
+app.use(session({
+  secret: 'bulk-mailer-secret-please-change',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false }
+}));
+
+function requireLogin(req, res, next) {
+  if (req.session && req.session.user === HARD_USERNAME) return next();
+  return res.redirect('/login');
+}
+
+// Login routes
+app.get('/login', (req, res) => {
+  res.render('login', { error: null });
+});
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === HARD_USERNAME && password === HARD_PASSWORD) {
+    req.session.user = username;
+    return res.redirect('/');
+  }
+  return res.render('login', { error: 'Invalid credentials' });
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/login');
+  });
+});
+
+// Form route
+app.get('/', requireLogin, (req, res) => {
+  res.render('form', {
+    message: null,
+    count: 0,
+    formData: {},
+    success: false
+  });
+});
+
+// Send emails sequentially
+app.post('/send', requireLogin, async (req, res) => {
+  const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
+
+  if (!sentFrom || !appPassword) {
+    return res.render('form', {
+      message: 'Sender email and app password required.',
+      count: 0,
+      formData: req.body,
+      success: false
+    });
+  }
+
+  let recipients = (bulkMails || '').split(/[\n,;]+/)
+    .map(s => s.trim())
+    .filter(s => s !== '');
+  recipients = [...new Set(recipients)]; // remove duplicates
+
+  if (recipients.length === 0) {
+    return res.render('form', {
+      message: 'No recipients provided.',
+      count: 0,
+      formData: req.body,
+      success: false
+    });
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: sentFrom,
+        pass: appPassword
+      }
+    });
+
+    let sentCount = 0;
+
+    // Sequential sending to avoid Gmail throttling
+    for (const to of recipients) {
+      try {
+        await transporter.sendMail({
+          from: `"${firstName}" <${sentFrom}>`,
+          to,
+          subject: subject || '(No subject)',
+          text: body || ''
+        });
+        sentCount++;
+        console.log(`Sent to ${to}`);
+        // Optional delay to avoid throttling (1000ms = 1 sec)
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (err) {
+        console.error(`Failed to send to ${to}: ${err.message}`);
+      }
+    }
+
+    return res.render('form', {
+      message: `Successfully sent ${sentCount} emails.`,
+      count: recipients.length,
+      formData: req.body,
+      success: true
+    });
+
+  } catch (err) {
+    console.error('Send error', err);
+    return res.render('form', {
+      message: `Error sending: ${err.message}`,
+      count: recipients.length,
+      formData: req.body,
+      success: false
+    });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
