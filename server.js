@@ -1,3 +1,65 @@
+// server.js
+require('dotenv').config();
+const express = require('express');
+const session = require('express-session');
+const bodyParser = require('body-parser');
+const nodemailer = require('nodemailer');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 8080;
+
+const HARD_USERNAME = 'Yatendra Rajput';
+const HARD_PASSWORD = 'Yattu@882';
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.urlencoded({ extended: true }));
+
+app.use(session({
+  secret: 'bulk-mailer-secret-please-change',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false }
+}));
+
+function requireLogin(req, res, next) {
+  if (req.session && req.session.user === HARD_USERNAME) return next();
+  return res.redirect('/login');
+}
+
+// Login routes
+app.get('/login', (req, res) => {
+  res.render('login', { error: null });
+});
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === HARD_USERNAME && password === HARD_PASSWORD) {
+    req.session.user = username;
+    return res.redirect('/');
+  }
+  return res.render('login', { error: 'Invalid credentials' });
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/login');
+  });
+});
+
+// Form route
+app.get('/', requireLogin, (req, res) => {
+  res.render('form', {
+    message: null,
+    count: 0,
+    formData: {},
+    success: false
+  });
+});
+
+// Send emails
 app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
@@ -5,7 +67,7 @@ app.post('/send', requireLogin, async (req, res) => {
     return res.render('form', {
       message: 'Sender email and app password required.',
       count: 0,
-      formData: req.body,  // keep what user typed
+      formData: req.body,
       success: false
     });
   }
@@ -13,26 +75,34 @@ app.post('/send', requireLogin, async (req, res) => {
   let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
   recipients = [...new Set(recipients)];
 
-  const validRecipients = recipients.filter(r => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r));
-  const invalidRecipients = recipients.filter(r => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r));
+  if (recipients.length === 0) {
+    return res.render('form', {
+      message: 'No recipients provided.',
+      count: 0,
+      formData: req.body,
+      success: false
+    });
+  }
 
   try {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: sentFrom,       // always use exactly the input
-        pass: appPassword     // always use exactly the input
+        user: sentFrom,       // use current input
+        pass: appPassword     // use current input
       }
     });
 
-    const sendPromises = validRecipients.map(to =>
+    const invalidRecipients = [];
+    const sendPromises = recipients.map(to =>
       transporter.sendMail({
-        from: `"${firstName}" <${sentFrom}>`, // always use exactly the input
+        from: `"${firstName}" <${sentFrom}>`,
         to,
         subject: subject || '(No subject)',
         text: body || ''
       }).catch(err => {
         console.error(`Send failed for ${to}: ${err.message}`);
+        invalidRecipients.push(to);
         return null;
       })
     );
@@ -41,17 +111,19 @@ app.post('/send', requireLogin, async (req, res) => {
     const sentCount = results.filter(r => r !== null).length;
 
     let msg = `Successfully sent ${sentCount} emails.`;
-    if (invalidRecipients.length) msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
+    if (invalidRecipients.length > 0) {
+      msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
+    }
 
-    // ✅ key: keep formData exactly what user typed
     return res.render('form', {
       message: msg,
       count: recipients.length,
-      formData: req.body,
+      formData: req.body,  // keep exactly what user typed
       success: true
     });
 
   } catch (err) {
+    console.error('Send error', err);
     return res.render('form', {
       message: `Error sending: ${err.message}`,
       count: recipients.length,
@@ -59,4 +131,8 @@ app.post('/send', requireLogin, async (req, res) => {
       success: false
     });
   }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
