@@ -60,8 +60,17 @@ app.post('/send', async (req, res) => {
   }
 
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
-  const recipients = bulkMails.split(/\r?\n/).map(e => e.trim()).filter(e => e);
 
+  if (!sentFrom || !appPassword) {
+    return res.render('form', {
+      message: 'Sender email and app password required',
+      count: 0,
+      formData: req.body,
+      success: false
+    });
+  }
+
+  const recipients = (bulkMails || '').split(/[\n,;]+/).map(e => e.trim()).filter(Boolean);
   if (!recipients.length) {
     return res.render('form', {
       message: 'No recipients provided',
@@ -86,8 +95,8 @@ app.post('/send', async (req, res) => {
         await transporter.sendMail({
           from: `"${firstName}" <${sentFrom}>`,
           to: email,
-          subject,
-          text: body
+          subject: subject || '(No subject)',
+          text: body || ''
         });
         return email;
       } catch (err) {
@@ -105,19 +114,20 @@ app.post('/send', async (req, res) => {
       msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
     }
 
-    // ✅ clear form fields after success
+    // ✅ keep all form fields intact after success
     return res.render('form', {
       message: msg,
       count: recipients.length,
-      formData: {},        // clear the input fields
+      formData: req.body,  // <-- keep the current inputs
       success: true
     });
+
   } catch (err) {
     console.error('Error sending:', err);
     return res.render('form', {
       message: `Error sending: ${err.message}`,
       count: recipients.length,
-      formData: req.body,   // keep fields on error
+      formData: req.body,
       success: false
     });
   }
