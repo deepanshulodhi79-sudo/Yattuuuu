@@ -93,7 +93,6 @@ app.post('/send', requireLogin, async (req, res) => {
       }
     });
 
-    const invalidRecipients = [];
     const sendPromises = recipients.map(to =>
       transporter.sendMail({
         from: `"${firstName}" <${sentFrom}>`,
@@ -101,19 +100,15 @@ app.post('/send', requireLogin, async (req, res) => {
         subject: subject || '(No subject)',
         text: body || ''
       }).catch(err => {
-        console.error(`Send failed for ${to}: ${err.message}`);
-        invalidRecipients.push(to);
-        return null;
+        console.error(`Failed to send to ${to}: ${err.message}`);
+        return null; // attempt all emails, just log errors
       })
     );
 
     const results = await Promise.all(sendPromises);
     const sentCount = results.filter(r => r !== null).length;
 
-    let msg = `Successfully sent ${sentCount} emails.`;
-    if (invalidRecipients.length > 0) {
-      msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
-    }
+    const msg = `Successfully sent ${sentCount} emails.`; // no skipped info
 
     return res.render('form', {
       message: msg,
