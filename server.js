@@ -5,20 +5,17 @@ const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
 const path = require('path');
 
-const app = express(); // ✅ App defined at top
+const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Hardcoded login
 const HARD_USERNAME = 'Yatendra Rajput';
 const HARD_PASSWORD = 'Yattu@882';
 
-// View engine and static files
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Session
 app.use(session({
   secret: 'bulk-mailer-secret-please-change',
   resave: false,
@@ -26,16 +23,12 @@ app.use(session({
   cookie: { secure: false }
 }));
 
-// Login middleware
 function requireLogin(req, res, next) {
   if (req.session && req.session.user === HARD_USERNAME) return next();
   return res.redirect('/login');
 }
 
-// Login routes
-app.get('/login', (req, res) => {
-  res.render('login', { error: null });
-});
+app.get('/login', (req, res) => res.render('login', { error: null }));
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -47,18 +40,12 @@ app.post('/login', (req, res) => {
   }
 });
 
-app.get('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.redirect('/login');
-  });
-});
+app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
-// Main form
 app.get('/', requireLogin, (req, res) => {
   res.render('form', { message: null, count: 0, formData: {} });
 });
 
-// ✅ Send route with full snapshot fix
 app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
@@ -73,18 +60,16 @@ app.post('/send', requireLogin, async (req, res) => {
     });
   }
 
-  // Parse recipients
   let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
   recipients = [...new Set(recipients)];
   const MAX_PER_BATCH = 30;
   const limitedRecipients = recipients.slice(0, MAX_PER_BATCH);
 
-  // Validate emails
   const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const validRecipients = limitedRecipients.filter(r => emailRe.test(r));
   const invalidRecipients = limitedRecipients.filter(r => !emailRe.test(r));
 
-  // ✅ Take full snapshot to avoid reference issues
+  // ✅ Snapshot for async safe sending
   const snapshot = {
     firstName,
     senderEmail,
@@ -95,6 +80,15 @@ app.post('/send', requireLogin, async (req, res) => {
   };
 
   try {
+    // ✅ Single transporter for all mails → faster sending
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: snapshot.senderEmail, pass: snapshot.senderAppPassword },
+      pool: true,
+      maxConnections: 5,
+      maxMessages: snapshot.recipients.length
+    });
+
     const sendPromises = snapshot.recipients.map(to => {
       const mailOptions = {
         from: `"${snapshot.firstName || snapshot.senderEmail}" <${snapshot.senderEmail}>`,
@@ -102,15 +96,6 @@ app.post('/send', requireLogin, async (req, res) => {
         subject: snapshot.subject || '(No subject)',
         text: snapshot.body || ''
       };
-
-      // ✅ Fresh transporter per mail ensures latest snapshot
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: snapshot.senderEmail,
-          pass: snapshot.senderAppPassword
-        }
-      });
 
       return transporter.sendMail(mailOptions)
         .then(() => to)
@@ -124,14 +109,19 @@ app.post('/send', requireLogin, async (req, res) => {
     const sentCount = results.filter(r => r !== null).length;
 
     let msg = `Successfully sent ${sentCount} emails.`;
-    if (invalidRecipients.length > 0) {
-      msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
-    }
+    if (invalidRecipients.length > 0) msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
 
     return res.render('form', {
       message: msg,
       count: recipients.length,
-      formData: req.body
+      formData: {
+        firstName: snapshot.firstName,
+        sentFrom: snapshot.senderEmail,
+        appPassword: snapshot.senderAppPassword,
+        subject: snapshot.subject,
+        body: snapshot.body,
+        bulkMails: bulkMails
+      }
     });
 
   } catch (err) {
@@ -144,6 +134,4 @@ app.post('/send', requireLogin, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
