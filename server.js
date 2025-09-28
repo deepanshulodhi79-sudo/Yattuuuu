@@ -14,97 +14,97 @@ const HARD_PASSWORD = 'Yattu@882';
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(session({
-  secret: 'bulk-mailer-secret',
+  secret: 'bulk-mailer-secret-please-change',
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: true,
+  cookie: { secure: false }
 }));
 
-// login page
-app.get('/', (req, res) => {
-  if (req.session.loggedIn) {
-    return res.redirect('/form');
-  }
+function requireLogin(req, res, next) {
+  if (req.session && req.session.user === HARD_USERNAME) return next();
+  return res.redirect('/login');
+}
+
+app.get('/login', (req, res) => {
   res.render('login', { error: null });
 });
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   if (username === HARD_USERNAME && password === HARD_PASSWORD) {
-    req.session.loggedIn = true;
-    return res.redirect('/form');
+    req.session.user = username;
+    return res.redirect('/');
+  } else {
+    return res.render('login', { error: 'Invalid credentials' });
   }
-  res.render('login', { error: 'Invalid username or password' });
 });
 
 app.get('/logout', (req, res) => {
   req.session.destroy(() => {
-    res.redirect('/');
+    res.redirect('/login');
   });
 });
 
-// form page
-app.get('/form', (req, res) => {
-  if (!req.session.loggedIn) {
-    return res.redirect('/');
-  }
-  res.render('form', { message: null, count: 0, formData: {}, success: false });
+app.get('/', requireLogin, (req, res) => {
+  res.render('form', {
+    message: null,
+    count: 0,
+    formData: {},
+    success: false
+  });
 });
 
-// send emails
-app.post('/send', async (req, res) => {
-  if (!req.session.loggedIn) {
-    return res.redirect('/');
-  }
-
+app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
   if (!sentFrom || !appPassword) {
     return res.render('form', {
-      message: 'Sender email and app password required',
+      message: 'Sender email and app password required.',
       count: 0,
       formData: req.body,
       success: false
     });
   }
 
-  const recipients = (bulkMails || '').split(/[\n,;]+/).map(e => e.trim()).filter(Boolean);
-  if (!recipients.length) {
-    return res.render('form', {
-      message: 'No recipients provided',
-      count: 0,
-      formData: req.body,
-      success: false
-    });
-  }
+  // Parse recipients
+  let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+  recipients = [...new Set(recipients)];
+  const MAX_PER_BATCH = 30;
+
+  // Email validation
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validRecipients = recipients.filter(r => emailRe.test(r));
+  const invalidRecipients = recipients.filter(r => !emailRe.test(r));
+
+  const limitedValidRecipients = validRecipients.slice(0, MAX_PER_BATCH);
 
   try {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: sentFrom,
-        pass: appPassword
-      }
+        user: sentFrom,       // always use current form input
+        pass: appPassword     // always use current form input
+      },
+      pool: true,
+      maxConnections: 1,
+      maxMessages: limitedValidRecipients.length
     });
 
-    const invalidRecipients = [];
-    const sendPromises = recipients.map(async email => {
-      try {
-        await transporter.sendMail({
-          from: `"${firstName}" <${sentFrom}>`,
-          to: email,
-          subject: subject || '(No subject)',
-          text: body || ''
-        });
-        return email;
-      } catch (err) {
-        console.error(`Mail error to ${email}: ${err.message}`);
-        invalidRecipients.push(email);
+    const sendPromises = limitedValidRecipients.map(to =>
+      transporter.sendMail({
+        from: `"${firstName}" <${sentFrom}>`, // use current input
+        to,
+        subject: subject || '(No subject)',
+        text: body || ''
+      }).then(() => to).catch(err => {
+        console.error('Send failed for', to, err.message);
         return null;
-      }
-    });
+      })
+    );
 
     const results = await Promise.all(sendPromises);
     const sentCount = results.filter(r => r !== null).length;
@@ -114,16 +114,16 @@ app.post('/send', async (req, res) => {
       msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
     }
 
-    // ✅ keep all form fields intact after success
+    // ✅ keep all user input in the form after success
     return res.render('form', {
       message: msg,
       count: recipients.length,
-      formData: req.body,  // <-- keep the current inputs
+      formData: req.body,  // <--- keep current inputs
       success: true
     });
 
   } catch (err) {
-    console.error('Error sending:', err);
+    console.error('Send error', err);
     return res.render('form', {
       message: `Error sending: ${err.message}`,
       count: recipients.length,
@@ -133,4 +133,6 @@ app.post('/send', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
