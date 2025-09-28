@@ -5,20 +5,18 @@ const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
 const path = require('path');
 
-const app = express(); // ✅ App defined at top
+const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Hardcoded login
 const HARD_USERNAME = 'Yatendra Rajput';
 const HARD_PASSWORD = 'Yattu@882';
 
-// View engine and static files
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 
-// Session
 app.use(session({
   secret: 'bulk-mailer-secret-please-change',
   resave: false,
@@ -26,16 +24,12 @@ app.use(session({
   cookie: { secure: false }
 }));
 
-// Login middleware
 function requireLogin(req, res, next) {
   if (req.session && req.session.user === HARD_USERNAME) return next();
   return res.redirect('/login');
 }
 
-// Login routes
-app.get('/login', (req, res) => {
-  res.render('login', { error: null });
-});
+app.get('/login', (req, res) => res.render('login', { error: null }));
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -48,17 +42,14 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.redirect('/login');
-  });
+  req.session.destroy(() => res.redirect('/login'));
 });
 
-// Main form
 app.get('/', requireLogin, (req, res) => {
-  res.render('form', { message: null, count: 0, formData: {} });
+  res.render('form', { formData: {}, message: null, count: 0 });
 });
 
-// ✅ Send route with full snapshot fix
+// ✅ AJAX send route
 app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
@@ -66,25 +57,19 @@ app.post('/send', requireLogin, async (req, res) => {
   const senderAppPassword = appPassword?.trim() || process.env.SENDER_APP_PASSWORD || '';
 
   if (!senderEmail || !senderAppPassword) {
-    return res.render('form', {
-      message: 'Sender email and app password required.',
-      count: 0,
-      formData: req.body
-    });
+    return res.json({ success: false, message: 'Sender email and app password required.' });
   }
 
-  // Parse recipients
   let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
   recipients = [...new Set(recipients)];
   const MAX_PER_BATCH = 30;
   const limitedRecipients = recipients.slice(0, MAX_PER_BATCH);
 
-  // Validate emails
   const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const validRecipients = limitedRecipients.filter(r => emailRe.test(r));
   const invalidRecipients = limitedRecipients.filter(r => !emailRe.test(r));
 
-  // ✅ Take full snapshot to avoid reference issues
+  // ✅ Snapshot for safe async sending
   const snapshot = {
     firstName,
     senderEmail,
@@ -103,13 +88,9 @@ app.post('/send', requireLogin, async (req, res) => {
         text: snapshot.body || ''
       };
 
-      // ✅ Fresh transporter per mail ensures latest snapshot
       const transporter = nodemailer.createTransport({
         service: 'gmail',
-        auth: {
-          user: snapshot.senderEmail,
-          pass: snapshot.senderAppPassword
-        }
+        auth: { user: snapshot.senderEmail, pass: snapshot.senderAppPassword }
       });
 
       return transporter.sendMail(mailOptions)
@@ -124,26 +105,14 @@ app.post('/send', requireLogin, async (req, res) => {
     const sentCount = results.filter(r => r !== null).length;
 
     let msg = `Successfully sent ${sentCount} emails.`;
-    if (invalidRecipients.length > 0) {
-      msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
-    }
+    if (invalidRecipients.length > 0) msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
 
-    return res.render('form', {
-      message: msg,
-      count: recipients.length,
-      formData: req.body
-    });
+    return res.json({ success: true, message: msg });
 
   } catch (err) {
     console.error('Send error', err);
-    return res.render('form', {
-      message: `Error sending: ${err.message}`,
-      count: recipients.length,
-      formData: req.body
-    });
+    return res.json({ success: false, message: `Error sending: ${err.message}` });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
