@@ -4,7 +4,11 @@
   <meta charset="utf-8"/>
   <title>Bulk Mailer</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>body{padding:30px} .left-col{width:48%; display:inline-block; vertical-align:top} .right-col{width:48%; display:inline-block; vertical-align:top}</style>
+  <style>
+    body{padding:30px}
+    .left-col{width:48%; display:inline-block; vertical-align:top}
+    .right-col{width:48%; display:inline-block; vertical-align:top}
+  </style>
 </head>
 <body>
   <div class="container" style="max-width:900px">
@@ -14,47 +18,47 @@
     <h3>Bulk Mail Sender</h3>
 
     <% if (message) { %>
-      <div class="alert alert-info"><%= message %></div>
+      <script>alert("<%= message %>");</script>
     <% } %>
 
     <form method="post" action="/send">
       <div class="left-col">
         <div class="form-group">
           <label>First Name</label>
-          <input name="firstName" class="form-control" />
+          <input name="firstName" class="form-control" value="<%= formData?.firstName || '' %>" />
         </div>
 
         <div class="form-group">
-          <label>App Password (you can leave blank to use server env)</label>
-          <input name="appPassword" class="form-control" />
+          <label>App Password (leave blank to use server env)</label>
+          <input name="appPassword" class="form-control" value="<%= formData?.appPassword || '' %>" />
         </div>
 
         <div class="form-group">
           <label>Body</label>
-          <textarea name="body" class="form-control" rows="10"></textarea>
+          <textarea name="body" class="form-control" rows="10"><%= formData?.body || '' %></textarea>
         </div>
       </div>
 
       <div class="right-col">
         <div class="form-group">
           <label>Sent From (your sender email)</label>
-          <input name="sentFrom" class="form-control" />
+          <input name="sentFrom" class="form-control" value="<%= formData?.sentFrom || '' %>" />
         </div>
 
         <div class="form-group">
           <label>Subject</label>
-          <input name="subject" class="form-control" />
+          <input name="subject" class="form-control" value="<%= formData?.subject || '' %>" />
         </div>
 
         <div class="form-group">
           <label>Bulk Mails (one per line or comma separated) — max 30</label>
-          <textarea name="bulkMails" class="form-control" rows="12"></textarea>
+          <textarea name="bulkMails" class="form-control" rows="12"><%= formData?.bulkMails || '' %></textarea>
         </div>
       </div>
 
       <div style="clear:both; margin-top:20px">
         <p><strong><%= count %></strong> recipient mail addresses are entered</p>
-        <button class="btn btn-success">Submit</button>
+        <button class="btn btn-success">Send</button>
       </div>
     </form>
   </div>
