@@ -1,68 +1,74 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <title>Bulk Mail Sender</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    .photo-box {
+      width: 150px;
+      height: 180px;
+      border: 1px solid #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .admission-label {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-weight: bold;
+      color: #444;
+    }
+  </style>
 </head>
 <body class="p-3">
-  <h2>Bulk Mail Sender</h2>
+<div class="container">
+  <div class="admission-label">Admission 2025-26</div>
+  <h2 class="mb-3">Bulk Mail Sender</h2>
 
-  <form id="mailForm">
-    <div class="mb-2">
-      <label>First Name (Sender Name)</label>
-      <input type="text" name="senderName" class="form-control" required>
+  <% if (message) { %>
+    <div class="alert alert-info"><%= message %></div>
+  <% } %>
+
+  <form action="/send" method="POST">
+    <div class="row">
+      <div class="col-md-4">
+        <div class="photo-box">Photo</div>
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          <input type="text" class="form-control" name="firstName" value="<%= formData.firstName || '' %>" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Sender Email</label>
+          <input type="email" class="form-control" name="sentFrom" value="<%= formData.sentFrom || '' %>" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">App Password</label>
+          <input type="password" class="form-control" name="appPassword" value="<%= formData.appPassword || '' %>" required>
+        </div>
+      </div>
+
+      <div class="col-md-8">
+        <div class="mb-3">
+          <label class="form-label">Subject</label>
+          <input type="text" class="form-control" name="subject" value="<%= formData.subject || '' %>">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Message Body</label>
+          <textarea class="form-control" name="body" rows="5"><%= formData.body || '' %></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Bulk Email IDs (one per line)</label>
+          <textarea class="form-control" name="bulkMails" rows="5"><%= formData.bulkMails || '' %></textarea>
+          <small class="text-muted">You entered <%= count || 0 %> addresses</small>
+        </div>
+        <button type="submit" class="btn btn-primary">Send Emails</button>
+        <a href="/logout" class="btn btn-secondary">Logout</a>
+      </div>
     </div>
-    <div class="mb-2">
-      <label>Sent From (your sender email)</label>
-      <input type="email" name="senderEmail" class="form-control" required>
-    </div>
-    <div class="mb-2">
-      <label>App Password</label>
-      <input type="password" name="appPassword" class="form-control">
-    </div>
-    <div class="mb-2">
-      <label>Subject</label>
-      <input type="text" name="subject" class="form-control" required>
-    </div>
-    <div class="mb-2">
-      <label>Body</label>
-      <textarea name="body" rows="5" class="form-control" required></textarea>
-    </div>
-    <div class="mb-2">
-      <label>Bulk Mails (one per line or comma separated)</label>
-      <textarea name="recipients" id="recipients" rows="5" class="form-control" required></textarea>
-      <small id="countText"></small>
-    </div>
-    <button class="btn btn-success">Send</button>
   </form>
-
-  <script>
-    // recipient count update
-    document.getElementById('recipients').addEventListener('input', function(){
-      const all = this.value.split(/[\n,]+/).map(r=>r.trim()).filter(r=>r);
-      document.getElementById('countText').innerText = `${all.length} recipient mail addresses are entered`;
-    });
-
-    // AJAX submit
-    document.getElementById('mailForm').addEventListener('submit', async function(e){
-      e.preventDefault();
-      const form = e.target;
-      const data = new FormData(form);
-      const obj = {};
-      data.forEach((v,k)=>obj[k]=v);
-      try {
-        const resp = await fetch('/send', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(obj)
-        });
-        const result = await resp.json();
-        alert(result.message);
-        // fields जस के तस रहेंगे (form reset नहीं होगा)
-      } catch(err){
-        alert("❌ Error sending mails");
-      }
-    });
-  </script>
+</div>
 </body>
 </html>
