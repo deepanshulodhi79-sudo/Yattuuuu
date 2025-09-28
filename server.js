@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // ---------- HARD-CODED LOGIN ----------
-const HARD_USERNAME = 'Yatendre Rajput';
+const HARD_USERNAME = 'Yatendra Rajput';
 const HARD_PASSWORD = 'Yattu@882';
 // --------------------------------------
 
