@@ -15,7 +15,6 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
 
 app.use(session({
   secret: 'bulk-mailer-secret-please-change',
@@ -46,10 +45,9 @@ app.get('/logout', (req, res) => {
 });
 
 app.get('/', requireLogin, (req, res) => {
-  res.render('form', { formData: {}, message: null, count: 0 });
+  res.render('form', { message: null, count: 0, formData: {} });
 });
 
-// ✅ AJAX send route
 app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
@@ -57,19 +55,25 @@ app.post('/send', requireLogin, async (req, res) => {
   const senderAppPassword = appPassword?.trim() || process.env.SENDER_APP_PASSWORD || '';
 
   if (!senderEmail || !senderAppPassword) {
-    return res.json({ success: false, message: 'Sender email and app password required.' });
+    return res.render('form', {
+      message: 'Sender email and app password required.',
+      count: 0,
+      formData: req.body
+    });
   }
 
+  // Parse recipients and limit
   let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
   recipients = [...new Set(recipients)];
   const MAX_PER_BATCH = 30;
   const limitedRecipients = recipients.slice(0, MAX_PER_BATCH);
 
+  // Validate emails
   const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const validRecipients = limitedRecipients.filter(r => emailRe.test(r));
   const invalidRecipients = limitedRecipients.filter(r => !emailRe.test(r));
 
-  // ✅ Snapshot for safe async sending
+  // ✅ Take snapshot before sending to avoid reference issues
   const snapshot = {
     firstName,
     senderEmail,
@@ -107,11 +111,27 @@ app.post('/send', requireLogin, async (req, res) => {
     let msg = `Successfully sent ${sentCount} emails.`;
     if (invalidRecipients.length > 0) msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
 
-    return res.json({ success: true, message: msg });
+    // ✅ Render original form with snapshot values to prevent overwrite
+    return res.render('form', {
+      message: msg,
+      count: recipients.length,
+      formData: {
+        firstName: snapshot.firstName,
+        sentFrom: snapshot.senderEmail,
+        appPassword: snapshot.senderAppPassword,
+        subject: snapshot.subject,
+        body: snapshot.body,
+        bulkMails: bulkMails
+      }
+    });
 
   } catch (err) {
     console.error('Send error', err);
-    return res.json({ success: false, message: `Error sending: ${err.message}` });
+    return res.render('form', {
+      message: `Error sending: ${err.message}`,
+      count: recipients.length,
+      formData: req.body
+    });
   }
 });
 
