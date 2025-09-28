@@ -72,8 +72,11 @@ app.post('/send', requireLogin, async (req, res) => {
     });
   }
 
-  let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
-  recipients = [...new Set(recipients)];
+  // Parse recipients: remove duplicates and empty lines
+  let recipients = (bulkMails || '').split(/[\n,;]+/)
+    .map(s => s.trim())
+    .filter(s => s !== '');
+  recipients = [...new Set(recipients)]; // remove duplicates
 
   if (recipients.length === 0) {
     return res.render('form', {
@@ -88,11 +91,12 @@ app.post('/send', requireLogin, async (req, res) => {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: sentFrom,       // use current input
-        pass: appPassword     // use current input
+        user: sentFrom,
+        pass: appPassword
       }
     });
 
+    // Send emails to all recipients
     const sendPromises = recipients.map(to =>
       transporter.sendMail({
         from: `"${firstName}" <${sentFrom}>`,
@@ -101,19 +105,17 @@ app.post('/send', requireLogin, async (req, res) => {
         text: body || ''
       }).catch(err => {
         console.error(`Failed to send to ${to}: ${err.message}`);
-        return null; // attempt all emails, just log errors
+        return null; // still attempt all
       })
     );
 
     const results = await Promise.all(sendPromises);
     const sentCount = results.filter(r => r !== null).length;
 
-    const msg = `Successfully sent ${sentCount} emails.`; // no skipped info
-
     return res.render('form', {
-      message: msg,
+      message: `Successfully sent ${sentCount} emails.`,
       count: recipients.length,
-      formData: req.body,  // keep exactly what user typed
+      formData: req.body, // keep exactly what user typed
       success: true
     });
 
