@@ -24,7 +24,7 @@
     <form method="post" action="/send">
       <div class="left-col">
         <div class="form-group">
-          <label>First Name</label>
+          <label>First Name (Sender Name)</label>
           <input name="firstName" class="form-control" value="<%= formData?.firstName || '' %>" />
         </div>
 
@@ -52,7 +52,8 @@
 
         <div class="form-group">
           <label>Bulk Mails (one per line or comma separated) — max 30</label>
-          <textarea name="bulkMails" class="form-control" rows="12"><%= formData?.bulkMails || '' %></textarea>
+          <textarea id="bulkMails" name="bulkMails" class="form-control" rows="12"><%= formData?.bulkMails || '' %></textarea>
+          <small id="bulkCount"></small>
         </div>
       </div>
 
@@ -62,5 +63,21 @@
       </div>
     </form>
   </div>
+
+  <script>
+    // live count of emails typed
+    const bulkArea = document.getElementById('bulkMails');
+    const bulkCount = document.getElementById('bulkCount');
+    function updateCount() {
+      if (!bulkArea) return;
+      const text = bulkArea.value;
+      const arr = text.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+      bulkCount.textContent = arr.length + ' IDs entered';
+    }
+    if (bulkArea) {
+      bulkArea.addEventListener('input', updateCount);
+      updateCount();
+    }
+  </script>
 </body>
 </html>
