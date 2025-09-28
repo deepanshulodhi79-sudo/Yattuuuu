@@ -85,7 +85,7 @@ app.post('/send', requireLogin, async (req, res) => {
       service: 'gmail',
       auth: { user: snapshot.senderEmail, pass: snapshot.senderAppPassword },
       pool: true,
-      maxConnections: 5,
+      maxConnections: 10,
       maxMessages: snapshot.recipients.length
     });
 
