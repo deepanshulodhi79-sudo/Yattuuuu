@@ -96,17 +96,18 @@ app.post('/send', requireLogin, async (req, res) => {
       maxMessages: limitedValidRecipients.length
     });
 
-    const sendPromises = limitedValidRecipients.map(to => 
+   const sendPromises = limitedValidRecipients.map(to =>
   transporter.sendMail({
-    from: "${firstName || senderEmail}" <${senderEmail}>,
+    from: `${firstName || senderEmail} <${senderEmail}>`,
     to,
     subject: subject || '(No subject)',
     text: body || ''
-  }).then(()=>to).catch(err=>{
-    console.error('Send failed for',to,err.message);
+  }).then(() => to).catch(err => {
+    console.error('Send failed for', to, err.message);
     return null;
   })
 );
+
 
 const results = await Promise.all(sendPromises);
 const sentCount = results.filter(r=>r!==null).length;
