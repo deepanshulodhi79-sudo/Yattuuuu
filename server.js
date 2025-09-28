@@ -28,7 +28,9 @@ function requireLogin(req, res, next) {
   return res.redirect('/login');
 }
 
-app.get('/login', (req, res) => res.render('login', { error: null }));
+app.get('/login', (req, res) => {
+  res.render('login', { error: null });
+});
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -41,18 +43,24 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/logout', (req, res) => {
-  req.session.destroy(() => res.redirect('/login'));
+  req.session.destroy(() => {
+    res.redirect('/login');
+  });
 });
 
 app.get('/', requireLogin, (req, res) => {
-  res.render('form', { message: null, count: 0, formData: {} });
+  res.render('form', {
+    message: null,
+    count: 0,
+    formData: {}
+  });
 });
 
 app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
-  const senderEmail = sentFrom?.trim() || process.env.SENDER_EMAIL || '';
-  const senderAppPassword = appPassword?.trim() || process.env.SENDER_APP_PASSWORD || '';
+  const senderEmail = sentFrom && sentFrom.trim() !== '' ? sentFrom.trim() : (process.env.SENDER_EMAIL || '');
+  const senderAppPassword = appPassword && appPassword.trim() !== '' ? appPassword.trim() : (process.env.SENDER_APP_PASSWORD || '');
 
   if (!senderEmail || !senderAppPassword) {
     return res.render('form', {
@@ -62,77 +70,81 @@ app.post('/send', requireLogin, async (req, res) => {
     });
   }
 
-  // Parse recipients and limit
+  // Parse recipients
   let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
   recipients = [...new Set(recipients)];
   const MAX_PER_BATCH = 30;
-  const limitedRecipients = recipients.slice(0, MAX_PER_BATCH);
 
-  // Validate emails
+  // Email validation
   const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const validRecipients = limitedRecipients.filter(r => emailRe.test(r));
-  const invalidRecipients = limitedRecipients.filter(r => !emailRe.test(r));
+  const validRecipients = recipients.filter(r => emailRe.test(r));
+  const invalidRecipients = recipients.filter(r => !emailRe.test(r));
 
-  // ✅ Take snapshot before sending to avoid reference issues
-  const snapshot = {
-    firstName,
-    senderEmail,
-    senderAppPassword,
-    subject,
-    body,
-    recipients: [...validRecipients]
-  };
+  // Limit
+  const limitedValidRecipients = validRecipients.slice(0, MAX_PER_BATCH);
 
   try {
-    const sendPromises = snapshot.recipients.map(to => {
-      const mailOptions = {
-        from: `"${snapshot.firstName || snapshot.senderEmail}" <${snapshot.senderEmail}>`,
-        to,
-        subject: snapshot.subject || '(No subject)',
-        text: snapshot.body || ''
-      };
-
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: snapshot.senderEmail, pass: snapshot.senderAppPassword }
-      });
-
-      return transporter.sendMail(mailOptions)
-        .then(() => to)
-        .catch(err => {
-          console.error('Send failed for', to, err.message);
-          return null;
-        });
+    // ✅ Create a new transporter each time to ensure latest details are used
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: senderEmail,
+        pass: senderAppPassword
+      }
     });
+
+    const sendPromises = limitedValidRecipients.map(to => {
+  // ✅ Fresh copy of mail details for this recipient
+  const mailOptions = {
+    from: "${firstName || senderEmail}" <${senderEmail}>,
+    to,
+    subject: subject || '(No subject)',
+    text: body || ''
+  };
+
+  // ✅ Fresh transporter for each batch (or each mail)
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: senderEmail,
+      pass: senderAppPassword
+    }
+  });
+
+  return transporter.sendMail(mailOptions)
+    .then(() => to)
+    .catch(err => {
+      console.error('Send failed for', to, err.message);
+      return null;
+    });
+});
+
 
     const results = await Promise.all(sendPromises);
     const sentCount = results.filter(r => r !== null).length;
 
-    let msg = `Successfully sent ${sentCount} emails.`;
-    if (invalidRecipients.length > 0) msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
+    let msg = Successfully sent ${sentCount} emails.;
+    if (invalidRecipients.length > 0) {
+      msg += ` Skipped ${invalidRecipients.length} invalid addresses.`;
+    }
 
-    // ✅ Render original form with snapshot values to prevent overwrite
     return res.render('form', {
       message: msg,
       count: recipients.length,
-      formData: {
-        firstName: snapshot.firstName,
-        sentFrom: snapshot.senderEmail,
-        appPassword: snapshot.senderAppPassword,
-        subject: snapshot.subject,
-        body: snapshot.body,
-        bulkMails: bulkMails
-      }
+      formData: req.body
     });
 
   } catch (err) {
     console.error('Send error', err);
     return res.render('form', {
-      message: `Error sending: ${err.message}`,
+      message: Error sending: ${err.message},
       count: recipients.length,
       formData: req.body
     });
   }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(Server running on port ${PORT});
+});
+
