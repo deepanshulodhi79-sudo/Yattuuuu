@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
 const path = require('path');
 
-const app = express(); // ✅ app define at top
+const app = express(); // ✅ App defined at top
 const PORT = process.env.PORT || 8080;
 
 // Hardcoded login
@@ -58,7 +58,7 @@ app.get('/', requireLogin, (req, res) => {
   res.render('form', { message: null, count: 0, formData: {} });
 });
 
-// Send route with snapshot fix
+// ✅ Send route with full snapshot fix
 app.post('/send', requireLogin, async (req, res) => {
   const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
 
@@ -73,18 +73,18 @@ app.post('/send', requireLogin, async (req, res) => {
     });
   }
 
-  // Parse recipients and limit
+  // Parse recipients
   let recipients = (bulkMails || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
   recipients = [...new Set(recipients)];
   const MAX_PER_BATCH = 30;
   const limitedRecipients = recipients.slice(0, MAX_PER_BATCH);
 
-  // Email validation
+  // Validate emails
   const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const validRecipients = limitedRecipients.filter(r => emailRe.test(r));
   const invalidRecipients = limitedRecipients.filter(r => !emailRe.test(r));
 
-  // ✅ Snapshot of current form data
+  // ✅ Take full snapshot to avoid reference issues
   const snapshot = {
     firstName,
     senderEmail,
@@ -103,7 +103,7 @@ app.post('/send', requireLogin, async (req, res) => {
         text: snapshot.body || ''
       };
 
-      // Fresh transporter for each mail
+      // ✅ Fresh transporter per mail ensures latest snapshot
       const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
