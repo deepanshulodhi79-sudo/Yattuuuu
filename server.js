@@ -1,3 +1,4 @@
+// server.js
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
@@ -8,131 +9,117 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-const HARD_USERNAME = 'Yatendra Rajput';
-const HARD_PASSWORD = 'Yattu@882';
+// 🔑 Hardcoded login
+const HARD_USERNAME = "Yatendra Rajput";
+const HARD_PASSWORD = "Yattu@882";
 
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-app.use(express.static(path.join(__dirname, 'public')));
+// Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({
-  secret: 'bulk-mailer-secret-please-change',
+  secret: 'bulk-mailer-secret',
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false }
+  saveUninitialized: true
 }));
 
-function requireLogin(req, res, next) {
-  if (req.session && req.session.user === HARD_USERNAME) return next();
-  return res.redirect('/login');
+// 🔒 Auth middleware
+function requireAuth(req, res, next) {
+  if (req.session.user) return next();
+  return res.redirect('/');
 }
 
-// Login routes
-app.get('/login', (req, res) => {
-  res.render('login', { error: null });
+// Routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   if (username === HARD_USERNAME && password === HARD_PASSWORD) {
     req.session.user = username;
-    return res.redirect('/');
+    return res.json({ success: true });
   }
-  return res.render('login', { error: 'Invalid credentials' });
+  return res.json({ success: false, message: "❌ Invalid credentials" });
 });
 
-app.get('/logout', (req, res) => {
+app.get('/launcher', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
+});
+
+app.post('/logout', (req, res) => {
   req.session.destroy(() => {
-    res.redirect('/login');
+    res.clearCookie('connect.sid');
+    return res.json({ success: true });
   });
 });
 
-// Form route
-app.get('/', requireLogin, (req, res) => {
-  res.render('form', {
-    message: null,
-    count: 0,
-    formData: {},
-    success: false
-  });
-});
+// Helper function for delay
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-// Send emails (Sequential + 0.1s delay)
-app.post('/send', requireLogin, async (req, res) => {
-  const { firstName, sentFrom, appPassword, subject, body, bulkMails } = req.body;
+// Helper function for batch sending
+async function sendBatch(transporter, mails, batchSize = 5) {
+  const results = [];
+  for (let i = 0; i < mails.length; i += batchSize) {
+    const batch = mails.slice(i, i + batchSize);
+    const promises = batch.map(mail => transporter.sendMail(mail));
+    const settled = await Promise.allSettled(promises);
+    results.push(...settled);
 
-  if (!sentFrom || !appPassword) {
-    return res.render('form', {
-      message: 'Sender email and app password required.',
-      count: 0,
-      formData: req.body,
-      success: false
-    });
+    // Small pause between batches to avoid Gmail rate-limit
+    await delay(200); // 0.2 sec pause
   }
+  return results;
+}
 
-  let recipients = (bulkMails || '').split(/[\n,;]+/)
-    .map(s => s.trim())
-    .filter(s => s !== '');
-
-  // Remove duplicates and limit to 30
-  recipients = [...new Set(recipients)].slice(0, 30);
-
-  if (recipients.length === 0) {
-    return res.render('form', {
-      message: 'No recipients provided.',
-      count: 0,
-      formData: req.body,
-      success: false
-    });
-  }
-
+// ✅ Bulk Mail Sender with fast batch sending
+app.post('/send', requireAuth, async (req, res) => {
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: sentFrom,
-        pass: appPassword
-      }
-    });
-
-    let sentCount = 0;
-
-    for (const to of recipients) {
-      try {
-        await transporter.sendMail({
-          from: `"${firstName}" <${sentFrom}>`,
-          to,
-          subject: subject || '(No subject)',
-          text: body || ''
-        });
-        sentCount++;
-        console.log(`Sent to ${to}`);
-        // Delay 0.1 second
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (err) {
-        console.error(`Failed to send to ${to}: ${err.message}`);
-      }
+    const { senderName, email, password, recipients, subject, message } = req.body;
+    if (!email || !password || !recipients) {
+      return res.json({ success: false, message: "Email, password and recipients required" });
     }
 
-    return res.render('form', {
-      message: `Successfully sent ${sentCount} emails.`,
-      count: recipients.length,
-      formData: req.body,
-      success: true
+    const recipientList = recipients
+      .split(/[\n,]+/)
+      .map(r => r.trim())
+      .filter(r => r);
+
+    if (recipientList.length === 0) {
+      return res.json({ success: false, message: "No valid recipients" });
+    }
+
+    // ✅ Single transporter
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user: email, pass: password }
     });
 
+    // Prepare mails
+    const mails = recipientList.map(r => ({
+      from: `"${senderName || 'Anonymous'}" <${email}>`,
+      to: r,
+      subject: subject || "No Subject",
+      text: message || ""
+    }));
+
+    // Send mails in batches (parallel within batch)
+    await sendBatch(transporter, mails, 5); // 5 mails parallel
+
+    return res.json({ success: true, message: `✅ Mail sent to ${recipientList.length}` });
+
   } catch (err) {
-    console.error('Send error', err);
-    return res.render('form', {
-      message: `Error sending: ${err.message}`,
-      count: recipients.length,
-      formData: req.body,
-      success: false
-    });
+    console.error("Send error:", err);
+    return res.json({ success: false, message: err.message });
   }
 });
 
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
