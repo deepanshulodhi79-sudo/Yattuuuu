@@ -62,31 +62,30 @@ function delay(ms) {
 
 // Helper function for batch sending
 async function sendBatch(transporter, mails, batchSize = 5) {
-  const results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
-    const batch = mails.slice(i, i + batchSize);
-    const promises = batch.map(mail => transporter.sendMail(mail));
-    const settled = await Promise.allSettled(promises);
-    results.push(...settled);
-
-    // Small pause between batches
+    await Promise.allSettled(
+      mails.slice(i, i + batchSize).map(mail => transporter.sendMail(mail))
+    );
     await delay(200);
   }
-  return results;
 }
 
-// ✅ Bulk Mail Sender with Avast footer
+// ✅ Bulk Mail Sender (FOOTER REMOVED)
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
+
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "Email, password and recipients required" });
+      return res.json({
+        success: false,
+        message: "Email, password and recipients required"
+      });
     }
 
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
-      .filter(r => r);
+      .filter(Boolean);
 
     if (recipientList.length === 0) {
       return res.json({ success: false, message: "No valid recipients" });
@@ -99,14 +98,11 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    // 📩 Auto footer
-    const AvastFooter = "\n\n📩 Scanned & Secured — www.avast.com";
-
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: (message || "") + AvastFooter
+      text: message || ""   // ❌ footer completely removed
     }));
 
     await sendBatch(transporter, mails, 5);
