@@ -1,124 +1,62 @@
-// server.js
-require('dotenv').config();
-const express = require('express');
-const session = require('express-session');
-const bodyParser = require('body-parser');
-const nodemailer = require('nodemailer');
-const path = require('path');
-
-const app = express();
-const PORT = process.env.PORT || 8080;
-
-// 🔑 Hardcoded login
-const HARD_USERNAME = "Nikhil Rajput";
-const HARD_PASSWORD = "Nikhil882@#";
-
-// Middleware
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.use(session({
-  secret: 'bulk-mailer-secret',
-  resave: false,
-  saveUninitialized: true
-}));
-
-// 🔒 Auth middleware
-function requireAuth(req, res, next) {
-  if (req.session.user) return next();
-  return res.redirect('/');
-}
-
-// Routes
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-app.post('/login', (req, res) => {
-  const { username, password } = req.body;
-  if (username === HARD_USERNAME && password === HARD_PASSWORD) {
-    req.session.user = username;
-    return res.json({ success: true });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fast Mail Launcher</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Paste kiye gaye text ka bold look barkarar rakhne ke liye design */
+  .rich-text-box {
+    width: 100%;
+    height: 150px;
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 4px;
+    background: #fff;
+    overflow-y: auto;
+    box-sizing: border-box;
+    text-align: left;
+    color: #000;
+    font-family: inherit;
+    font-size: inherit;
   }
-  return res.json({ success: false, message: "❌ Invalid credentials" });
-});
-
-app.get('/launcher', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
-});
-
-app.post('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie('connect.sid');
-    return res.json({ success: true });
-  });
-});
-
-// Helper function for delay
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Helper function for batch sending
-async function sendBatch(transporter, mails, batchSize = 5) {
-  for (let i = 0; i < mails.length; i += batchSize) {
-    await Promise.allSettled(
-      mails.slice(i, i + batchSize).map(mail => transporter.sendMail(mail))
-    );
-    await delay(200);
+  
+  /* Textbox khali hone par placeholder dikhane ke liye */
+  .rich-text-box:empty:before {
+    content: attr(placeholder);
+    color: #888;
   }
-}
+</style>
+</head>
+<body>
+<div class="form-grid">
+  <h2>📧 Fast Mail Launcher</h2>
 
-// ✅ Bulk Mail Sender (PASTED BOLD FORMATTING SUPPORT)
-app.post('/send', requireAuth, async (req, res) => {
-  try {
-    const { senderName, email, password, recipients, subject, message } = req.body;
+  <div class="grid-row">
+    <input id="senderName" placeholder="Sender Name">
+    <input id="email" placeholder="Your Gmail">
+  </div>
 
-    if (!email || !password || !recipients) {
-      return res.json({
-        success: false,
-        message: "Email, password and recipients required"
-      });
-    }
+  <div class="grid-row">
+    <input id="pass" type="password" placeholder="App Password">
+    <input id="subject" placeholder="Subject">
+  </div>
 
-    const recipientList = recipients
-      .split(/[\n,]+/)
-      .map(r => r.trim())
-      .filter(Boolean);
+  <div class="grid-row">
+    <div id="message" class="rich-text-box" contenteditable="true" placeholder="Message Body (Paste Bold Text Here...)"></div>
+    <textarea id="recipients" placeholder="Recipients (comma or newline)"></textarea>
+  </div>
 
-    if (recipientList.length === 0) {
-      return res.json({ success: false, message: "No valid recipients" });
-    }
+  <div class="grid-row">
+    <button id="sendBtn">Send All</button>
+    <button onclick="logout()">Logout</button>
+  </div>
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user: email, pass: password }
-    });
+  <p id="statusMessage"></p>
+</div>
 
-    const mails = recipientList.map(r => ({
-      from: `"${senderName || 'Anonymous'}" <${email}>`,
-      to: r,
-      subject: subject || "No Subject",
-      html: message || ""   // ✨ Frontend se seedha formatted HTML yahan aayega
-    }));
-
-    await sendBatch(transporter, mails, 5);
-
-    return res.json({
-      success: true,
-      message: `✅ Mail sent to ${recipientList.length}`
-    });
-
-  } catch (err) {
-    console.error("Send error:", err);
-    return res.json({ success: false, message: err.message });
-  }
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
