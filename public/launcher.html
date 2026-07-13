@@ -6,7 +6,17 @@
 <title>Fast Mail Launcher</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  /* Paste kiye gaye text ka bold look barkarar rakhne ke liye design */
+  /* Base layout padding and clear display */
+  .form-grid {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .grid-row {
+    margin-bottom: 15px;
+  }
+  
+  /* Rich text box ko ekdum professional look dene ke liye styling */
   .rich-text-box {
     width: 100%;
     height: 150px;
@@ -20,12 +30,24 @@
     color: #000;
     font-family: inherit;
     font-size: inherit;
+    margin-bottom: 15px;
   }
   
-  /* Textbox khali hone par placeholder dikhane ke liye */
+  /* Jab box khali ho toh placeholder text dikhe */
   .rich-text-box:empty:before {
     content: attr(placeholder);
     color: #888;
+  }
+
+  /* Recipients box full width standard look */
+  textarea#recipients {
+    width: 100%;
+    height: 120px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-family: inherit;
   }
 </style>
 </head>
@@ -43,12 +65,19 @@
     <input id="subject" placeholder="Subject">
   </div>
 
+  <!-- 🟢 Message Body Area (Paste Bold Text Here) -->
   <div class="grid-row">
-    <div id="message" class="rich-text-box" contenteditable="true" placeholder="Message Body (Paste Bold Text Here...)"></div>
-    <textarea id="recipients" placeholder="Recipients (comma or newline)"></textarea>
+    <label style="display:block; margin-bottom:5px; font-weight:bold;">Message Body:</label>
+    <div id="message" class="rich-text-box" contenteditable="true" placeholder="Type or paste your formatted/bold text here..."></div>
   </div>
 
+  <!-- 📥 Recipients Box (Yeh raha aapka box wapas perfectly placed!) -->
   <div class="grid-row">
+    <label style="display:block; margin-bottom:5px; font-weight:bold;">Recipients (Comma or Newline separated):</label>
+    <textarea id="recipients" placeholder="example1@gmail.com&#10;example2@gmail.com"></textarea>
+  </div>
+
+  <div class="grid-row" style="margin-top: 20px;">
     <button id="sendBtn">Send All</button>
     <button onclick="logout()">Logout</button>
   </div>
@@ -56,6 +85,7 @@
   <p id="statusMessage"></p>
 </div>
 
+<!-- 🔒 DOMPurify for security -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 <script src="script.js"></script>
 </body>
