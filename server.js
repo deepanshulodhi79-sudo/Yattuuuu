@@ -70,7 +70,7 @@ async function sendBatch(transporter, mails, batchSize = 5) {
   }
 }
 
-// ✅ Bulk Mail Sender (FOOTER REMOVED)
+// ✅ Bulk Mail Sender (HTML / BOLD SUPPORT ADDED)
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -98,11 +98,14 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
+    // 💡 Text ko line breaks (\n) se HTML (<br>) mein convert karne ke liye taaki formatting bani rahe
+    const formattedMessage = (message || '').replace(/\n/g, '<br>');
+
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: message || ""   // ❌ footer completely removed
+      html: formattedMessage   // ✨ 'text' ki jagah 'html' use kiya hai bold support ke liye
     }));
 
     await sendBatch(transporter, mails, 5);
